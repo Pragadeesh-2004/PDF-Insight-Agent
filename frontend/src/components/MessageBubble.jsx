@@ -1,11 +1,12 @@
 import React, { useState } from "react";
-import { Clock, FileText, Bot, Copy, Check } from "lucide-react";
+import { Clock, FileText, Bot, Copy, Check, Info } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export function MessageBubble({ message }) {
   const isUser = message.role === "user";
   const isAction = message.type === "ACTION";
+  const isFallbackAnswer = message.source === "FALLBACK_LLM";
 
   const formatTime = (date) => {
     if (!date) return "";
@@ -40,6 +41,15 @@ export function MessageBubble({ message }) {
             : "glass rounded-r-lg rounded-tl-lg"
         } p-3 break-words group relative`}
       >
+        {isFallbackAnswer && !isUser && (
+          <div className="mb-3 flex gap-2 rounded-lg border border-yellow-400/30 bg-yellow-400/10 px-3 py-2 text-xs text-yellow-100">
+            <Info size={14} className="mt-0.5 flex-shrink-0" />
+            <span>
+              This information was not found in the uploaded document. Answering from general AI knowledge.
+            </span>
+          </div>
+        )}
+
         <div className="text-white text-sm markdown-content overflow-x-auto">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
