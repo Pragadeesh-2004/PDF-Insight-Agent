@@ -14,6 +14,7 @@ import {
   createSession,
   deleteDocument,
 } from "./utils/api.js";
+import { API_BASE_URL } from "./utils/constants.js";
 import "./styles/global.css";
 
 const MAX_DOCUMENTS = 5;
@@ -62,29 +63,30 @@ export function App() {
 
     initializeSession();
 
-    const handleBeforeUnload = () => {
+    const cleanupSession = () => {
       const sessionId = localStorage.getItem("sessionId");
-      if (sessionId) {
-        const apiUrl = `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/session/${sessionId}`;
+      if (!sessionId) return;
 
+      const apiUrl = `${API_BASE_URL}/session/${sessionId}/cleanup`;
+
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(apiUrl);
+      } else {
         fetch(apiUrl, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
+          method: "POST",
           keepalive: true,
         }).catch(() => {});
-
-        console.log(`Cleanup triggered for session: ${sessionId}`);
-        localStorage.removeItem("sessionId");
       }
+
+      console.log(`Cleanup triggered for session: ${sessionId}`);
+      localStorage.removeItem("sessionId");
     };
 
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    window.addEventListener("unload", handleBeforeUnload);
+    window.addEventListener("pagehide", cleanupSession);
 
     return () => {
       mounted = false;
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      window.removeEventListener("unload", handleBeforeUnload);
+      window.removeEventListener("pagehide", cleanupSession);
     };
   }, []);
 

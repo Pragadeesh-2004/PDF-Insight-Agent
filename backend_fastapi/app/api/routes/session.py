@@ -16,6 +16,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def delete_session_data(session_id: str) -> None:
+    db = get_db()
+
+    sessions_collection = db[settings.MONGODB_SESSIONS_COLLECTION]
+    await sessions_collection.delete_one({"_id": session_id})
+
+    chunks_collection = db[settings.MONGODB_CHUNKS_COLLECTION]
+    await chunks_collection.delete_many({"sessionId": session_id})
+
+    documents_collection = db[settings.MONGODB_DOCUMENTS_COLLECTION]
+    await documents_collection.delete_many({"sessionId": session_id})
+
+    chat_history_collection = db[settings.MONGODB_CHAT_HISTORY_COLLECTION]
+    await chat_history_collection.delete_many({"sessionId": session_id})
+
+
 @router.post("/create")
 async def create_session() -> SessionResponse:
     """
@@ -114,23 +130,7 @@ async def delete_session(session_id: str) -> SessionResponse:
     try:
         logger.info(f"🗑️  Deleting session: {session_id}")
         
-        db = get_db()
-        
-        # Delete session
-        sessions_collection = db[settings.MONGODB_SESSIONS_COLLECTION]
-        await sessions_collection.delete_one({"_id": session_id})
-        
-        # Delete chunks
-        chunks_collection = db[settings.MONGODB_CHUNKS_COLLECTION]
-        await chunks_collection.delete_many({"sessionId": session_id})
-        
-        # Delete documents
-        documents_collection = db[settings.MONGODB_DOCUMENTS_COLLECTION]
-        await documents_collection.delete_many({"sessionId": session_id})
-        
-        # Delete chat history
-        chat_history_collection = db[settings.MONGODB_CHAT_HISTORY_COLLECTION]
-        await chat_history_collection.delete_many({"sessionId": session_id})
+        await delete_session_data(session_id)
         
         logger.info(f"✅ Session deleted: {session_id}")
         
@@ -143,6 +143,27 @@ async def delete_session(session_id: str) -> SessionResponse:
     except Exception as e:
         logger.error(f"❌ Error deleting session: {e}")
         raise HTTPException(status_code=500, detail=f"Error deleting session: {str(e)}")
+
+
+@router.post("/{session_id}/cleanup")
+async def cleanup_session(session_id: str) -> SessionResponse:
+    """
+    Delete a session from browser unload/pagehide events.
+    """
+    try:
+        logger.info(f"Cleaning up session: {session_id}")
+        await delete_session_data(session_id)
+        logger.info(f"Session cleaned up: {session_id}")
+
+        return SessionResponse(
+            session_id=session_id,
+            status="success",
+            message="Session cleaned up successfully"
+        )
+
+    except Exception as e:
+        logger.error(f"Error cleaning up session: {e}")
+        raise HTTPException(status_code=500, detail=f"Error cleaning up session: {str(e)}")
 
 
 @router.post("/{session_id}/clear-documents")
