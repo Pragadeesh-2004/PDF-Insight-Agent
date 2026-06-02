@@ -6,7 +6,8 @@ Production-grade RAG (Retrieval-Augmented Generation) system with LangChain, Mon
 
 This FastAPI backend replaces the original Node.js Express server, providing:
 
-- **Advanced PDF Processing**: PyMuPDF for extraction + Markdown conversion
+- **Advanced PDF Processing**: PyMuPDF for extraction + automatic text detection
+- **OCR Support**: Automatic Gemini Vision API OCR for scanned PDFs with insufficient embedded text
 - **Intelligent Chunking**: LangChain RecursiveCharacterTextSplitter (1500 chars, 300 overlap)
 - **Semantic Search**: MongoDB Atlas Vector Search with Gemini embeddings (3072-dim)
 - **RAG Pipeline**: Automatic context expansion (prev/current/next chunks)
@@ -20,10 +21,11 @@ This FastAPI backend replaces the original Node.js Express server, providing:
 | Framework      | FastAPI + Uvicorn                        |
 | Database       | MongoDB Atlas                            |
 | Vector Search  | MongoDB Atlas Vector Search              |
-| LLM            | Google Gemini 2.5 Flash                  |
-| Embeddings     | Gemini text-embedding-004 (3072-dim)     |
+| LLM            | Google Gemini (3.1-flash-lite)           |
+| Embeddings     | Gemini text-embedding-001 (3072-dim)     |
+| OCR Support    | Gemini Vision API (automatic detection)  |
 | Chunking       | LangChain RecursiveCharacterTextSplitter |
-| PDF Processing | PyMuPDF (fitz)                           |
+| PDF Processing | PyMuPDF (fitz) + OCR                     |
 
 ## Project Structure
 
@@ -150,20 +152,29 @@ All settings in `app/core/config.py`:
 
 ```python
 # Chunking
-CHUNK_SIZE: int = 1500          # Characters per chunk
-CHUNK_OVERLAP: int = 300        # Overlap between chunks
+CHUNK_SIZE: int = 1500              # Characters per chunk
+CHUNK_OVERLAP: int = 300            # Overlap between chunks
 
 # Retrieval
-TOP_K_RETRIEVAL: int = 10       # Chunks to retrieve
-SIMILARITY_THRESHOLD: float = 0.3  # Min similarity score
+TOP_K_RETRIEVAL: int = 10           # Chunks to retrieve
+SIMILARITY_THRESHOLD: float = 0.3   # Min similarity score (0.0-1.0)
 
 # Vector Search
-EMBEDDING_DIMENSION: int = 3072 # Gemini embedding size
+EMBEDDING_DIMENSION: int = 3072     # Gemini embedding size
 VECTOR_SEARCH_SIMILARITY: str = "cosine"  # Similarity metric
 
 # Session
-SESSION_EXPIRY_HOURS: int = 24  # Auto-delete after 24h
+SESSION_EXPIRY_HOURS: int = 24      # Auto-delete after 24h
 DOCUMENT_CLEANUP_ENABLED: bool = True  # Clean old docs
+
+# OCR Configuration
+OCR_ENABLED: bool = True            # Enable automatic OCR
+OCR_MIN_TEXT_CHARS: int = 25        # Min chars to skip OCR
+OCR_RENDER_DPI: int = 200           # DPI for OCR rendering
+
+# File Upload
+MAX_PDF_SIZE_MB: int = 100          # Max file size
+SUPPORTED_FORMATS: str = "pdf,docx,txt"  # Allowed formats
 ```
 
 ## MongoDB Atlas Setup
@@ -262,13 +273,60 @@ Previous research showed similar patterns...
 This finding aligns with the methodology...
 ```
 
+## OCR Support
+
+### Overview
+
+The backend automatically detects scanned PDFs and applies OCR when needed:
+
+```
+PDF Upload
+    ↓
+Extract embedded text (PyMuPDF)
+    ↓
+Check text length
+    ├─ If > OCR_MIN_TEXT_CHARS (25 chars) → Use extracted text
+    └─ If < OCR_MIN_TEXT_CHARS → Trigger OCR
+        ↓
+    Gemini Vision API OCR
+    ├─ Render pages at OCR_RENDER_DPI (200 DPI)
+    ├─ Extract text from images
+    └─ Merge with any extracted text
+        ↓
+    Continue with chunking & embedding
+```
+
+### Configuration
+
+```python
+OCR_ENABLED: bool = True        # Enable/disable automatic OCR
+OCR_MIN_TEXT_CHARS: int = 25    # Min chars in PDF to skip OCR
+OCR_RENDER_DPI: int = 200       # DPI for page rendering (higher = slower but better)
+GEMINI_OCR_MODEL: str = "gemini-3.1-flash-lite"  # Model for OCR processing
+```
+
+### Use Cases
+
+- **Scanned PDFs**: Documents where text is stored as images
+- **Image-heavy PDFs**: Mix of text and scanned pages
+- **Poor Quality PDFs**: Text extraction fails or produces gibberish
+- **Multi-language**: OCR supports 100+ languages via Gemini
+
+### Performance Notes
+
+- OCR processing adds ~500ms-2s per page (depending on DPI and complexity)
+- Cached embeddings prevent re-processing
+- Disable OCR (set `OCR_ENABLED=False`) for text-only documents to speed up processing
+- Higher DPI = better quality but slower processing
+
 ## Features
 
 ### ✅ Implemented
 
+- Automatic OCR for scanned PDFs using Gemini Vision API
 - Automatic TTL-based session cleanup
 - Vector search with context expansion
-- PDF → Markdown conversion
+- Intelligent PDF text extraction with fallback to OCR
 - Chunk metadata (page, index, size, tokens)
 - Error handling with graceful fallbacks
 - Async operations throughout

@@ -12,7 +12,6 @@ PDF Insight Agent is a local full-stack app with:
 Install these before running the project:
 
 - Python 3.9 or newer
-- Node.js 18 or newer
 - npm
 - MongoDB Atlas cluster
 - Google Gemini API key
@@ -25,7 +24,6 @@ PDF Insight Agent/
 |-- frontend/                 # Vite React frontend
 |-- PROJECT_STRUCTURE.md      # Detailed file map
 |-- README.md                 # Main documentation
-`-- docker-compose.yml        # Optional Docker setup
 ```
 
 ## Backend Setup

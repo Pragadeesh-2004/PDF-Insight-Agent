@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     
     # PDF Processing
     MAX_PDF_SIZE_MB: int = 100
-    SUPPORTED_FORMATS: str = "pdf,docx,txt"
+    SUPPORTED_FORMATS: str = "pdf,docx"
     OCR_ENABLED: bool = True
     OCR_MIN_TEXT_CHARS: int = 25
     OCR_RENDER_DPI: int = 200

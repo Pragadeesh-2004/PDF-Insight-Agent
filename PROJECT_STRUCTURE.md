@@ -11,7 +11,7 @@ PDF Insight Agent/
 |   |   |   |   |-- chat.py                  # Chat and RAG query endpoints
 |   |   |   |   |-- documents.py             # Document listing, lookup, and deletion endpoints
 |   |   |   |   |-- session.py               # Session lifecycle endpoints
-|   |   |   |   |-- upload.py                # PDF/DOCX upload and document action endpoints
+|   |   |   |   |-- upload.py                # PDF upload, processing, and document action endpoints
 |   |   |   |   `-- __init__.py
 |   |   |   `-- __init__.py
 |   |   |-- core/
@@ -23,8 +23,8 @@ PDF Insight Agent/
 |   |   |   `-- __init__.py
 |   |   |-- services/
 |   |   |   |-- chunking_service.py          # LangChain text chunking
-|   |   |   |-- embedding_service.py         # Gemini embedding generation
-|   |   |   |-- pdf_processor.py             # PDF and DOCX text extraction
+|   |   |   |-- embedding_service.py         # Gemini embedding generation (3072-dim)
+|   |   |   |-- pdf_processor.py             # PDF text extraction + OCR for scanned PDFs
 |   |   |   |-- rag_service.py               # RAG orchestration and answer generation
 |   |   |   |-- vector_store.py              # MongoDB vector storage/search helpers
 |   |   |   `-- __init__.py
@@ -117,4 +117,3 @@ backend_fastapi/venv/
 backend_fastapi/__pycache__/
 backend_fastapi/app/**/__pycache__/
 ```
-

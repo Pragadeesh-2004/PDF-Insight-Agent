@@ -6,11 +6,12 @@ A full-stack, modern AI-powered document analysis application that leverages Ret
 
 ### Core Capabilities
 
-- **Document Upload**: Support for PDF and Word (.docx) documents
+- **Document Upload**: Support for PDF and DOCX documents
 - **Text Extraction**: Automatic extraction and processing of document content
+- **Automatic OCR**: Gemini Vision API OCR for scanned PDFs with insufficient text
 - **Smart Chunking**: Intelligent text segmentation for optimal processing
 - **Embeddings Generation**: AI-powered embedding generation using Google Gemini
-- **Vector Search**: MongoDB Atlas Vector Search for semantic similarity
+- **Vector Search**: MongoDB Atlas Vector Search for semantic similarity (3072-dim)
 - **RAG System**: Hybrid RAG + Direct LLM approach for intelligent responses
 - **Document Analysis**:
   - Generate comprehensive summaries
@@ -39,15 +40,17 @@ A full-stack, modern AI-powered document analysis application that leverages Ret
 
 ### Backend
 
-- **Runtime**: Node.js 18+
-- **Framework**: Express.js
+- **Runtime**: Python 3.9+
+- **Framework**: FastAPI
+- **ASGI Server**: Uvicorn
 - **Database**: MongoDB Atlas
 - **Vector Search**: MongoDB Atlas Vector Search
 - **LLM**: Google Gemini 2.5 Flash API
+- **ORM**: Motor (async MongoDB driver)
 - **Document Processing**:
-  - `pdf-parse` for PDF extraction
-  - `mammoth` for Word document processing
-- **File Upload**: Multer
+  - `PyMuPDF` for PDF extraction
+- **RAG Framework**: LangChain
+- **File Upload**: Python Multipart
 
 ### Deployment
 
@@ -58,31 +61,31 @@ A full-stack, modern AI-powered document analysis application that leverages Ret
 ## 📋 Project Structure
 
 ```
-pdf-insight-agent/
-├── backend/
-│   ├── routes/
-│   │   ├── upload.js          # Document upload routes
-│   │   ├── chat.js            # Chat message routes
-│   │   └── session.js         # Session management
-│   ├── controllers/
-│   │   ├── uploadController.js
-│   │   ├── chatController.js
-│   │   └── sessionController.js
-│   ├── services/
-│   │   ├── pdfService.js      # PDF text extraction
-│   │   ├── docxService.js     # Word document extraction
-│   │   ├── chunkingService.js # Text chunking logic
-│   │   ├── embeddingService.js # Embedding generation
-│   │   ├── vectorSearchService.js # Vector similarity search
-│   │   ├── geminiService.js   # Gemini API integration
-│   │   └── ragService.js      # RAG workflow
-│   ├── utils/
-│   │   └── database.js        # MongoDB connection & indexes
-│   ├── middleware/
-│   ├── models/
-│   ├── .env.example           # Environment template
-│   ├── server.js              # Express server
-│   └── package.json
+PDF Insight Agent/
+├── backend_fastapi/
+│   ├── app/
+│   │   ├── api/
+│   │   │   └── routes/
+│   │   │       ├── upload.py       # Document upload routes
+│   │   │       ├── chat.py         # Chat message routes
+│   │   │       ├── documents.py    # Document management routes
+│   │   │       └── session.py      # Session management routes
+│   │   ├── core/
+│   │   │   ├── config.py           # Configuration management
+│   │   │   └── database.py         # MongoDB connection & setup
+│   │   ├── models/
+│   │   │   └── schemas.py          # Pydantic schemas
+│   │   ├── services/
+│   │   │   ├── pdf_processor.py    # PDF text extraction
+│   │   │   ├── chunking_service.py # Text chunking logic
+│   │   │   ├── embedding_service.py # Embedding generation
+│   │   │   ├── vector_store.py     # Vector similarity search
+│   │   │   └── rag_service.py      # RAG workflow
+│   │   └── __init__.py
+│   ├── main.py                     # FastAPI application entry point
+│   ├── requirements.txt            # Python dependencies
+│   ├── .env.example               # Environment template
+│   └── README.md
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
@@ -90,7 +93,9 @@ pdf-insight-agent/
 │   │   │   ├── ChatInterface.jsx
 │   │   │   ├── MessageBubble.jsx
 │   │   │   ├── UploadModal.jsx
-│   │   │   └── DocumentPanel.jsx
+│   │   │   ├── DocumentPanel.jsx
+│   │   │   └── ConfirmDialog.jsx
+│   │   ├── hooks/
 │   │   ├── pages/
 │   │   ├── utils/
 │   │   │   ├── api.js         # API client
@@ -102,9 +107,14 @@ pdf-insight-agent/
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── tailwind.config.js
-│   ├── postcss.config.js
+│   ├── postcss.config.cjs
+│   ├── tsconfig.json
 │   └── package.json
-├── package.json               # Root package
+├── GETTING_STARTED.md
+├── PROJECT_STRUCTURE.md
+├── QUICKSTART.md
+├── RAG_IMPLEMENTATION.md
+├── Procfile
 ├── .gitignore
 └── README.md
 ```
@@ -187,7 +197,7 @@ pdf-insight-agent/
 
 ### Upload Routes
 
-- `POST /api/upload/document` - Upload PDF or Word document
+- `POST /api/upload/document` - Upload PDF or DOCX document
 - `POST /api/upload/summary` - Generate document summary
 - `POST /api/upload/key-points` - Extract key points
 - `POST /api/upload/important-questions` - Generate questions
@@ -206,11 +216,13 @@ pdf-insight-agent/
 
 ### Document Upload Flow
 
-1. User uploads PDF/Word document
-2. Extract text from document
-3. Split text into overlapping chunks (2000 chars, 300 char overlap)
-4. Generate embeddings for each chunk using Gemini API
-5. Store chunks and embeddings in MongoDB
+1. User uploads PDF or DOCX document
+2. Extract text from document (PyMuPDF for PDFs, ZIP parsing for DOCX)
+3. Automatic OCR detection: If text is insufficient, trigger Gemini Vision API OCR
+4. Split text into overlapping chunks (1500 chars, 300 char overlap)
+5. Generate embeddings for each chunk using Gemini (3072-dimensional vectors)
+6. Store chunks and embeddings in MongoDB Atlas
+7. Create vector search index for semantic similarity
 
 ### Question Answering Flow
 
@@ -237,8 +249,9 @@ pdf-insight-agent/
 
 ### Prerequisites
 
-- Node.js 18+
-- npm or yarn
+- Python 3.9+
+- Node.js 16+ (for frontend development)
+- npm or yarn (for frontend)
 - MongoDB Atlas account
 - Google Gemini API key
 
@@ -250,27 +263,54 @@ pdf-insight-agent/
 cd "PDF Insight Agent"
 ```
 
-2. **Install dependencies**
+2. **Setup Backend (FastAPI)**
 
 ```bash
-npm run install-all
+cd backend_fastapi
+
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 3. **Setup Environment**
 
-Create `.env` in `backend/` directory:
+Create `.env` in `backend_fastapi/` directory:
 
 ```env
-PORT=5000
+# Server Configuration
+HOST=0.0.0.0
+PORT=8000
+DEBUG=True
+
+# MongoDB Configuration
 MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/pdf_insight_agent
-GEMINI_API_KEY=your_gemini_2_0_api_key
-NODE_ENV=development
-CORS_ORIGIN=http://localhost:3000
-SESSION_TTL=3600000
+DATABASE_NAME=pdf_insight_agent
+
+# Google Gemini Configuration
+GOOGLE_API_KEY=your_gemini_api_key
+
+# Frontend Configuration
+FRONTEND_URL=http://localhost:5173
+
+# Session Configuration
+SESSION_TTL=3600
+
+# Embedding Configuration
 EMBEDDING_MODEL=text-embedding-005
 VECTOR_SEARCH_THRESHOLD=0.7
+
+# File Upload Configuration
 MAX_FILE_SIZE=10485760
-ALLOWED_FILE_TYPES=application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document
+ALLOWED_FILE_TYPES=application/pdf
 ```
 
 4. **Get Gemini API Key**
@@ -284,20 +324,26 @@ ALLOWED_FILE_TYPES=application/pdf,application/vnd.openxmlformats-officedocument
    - Get connection string
    - Add to `.env`
 
+6. **Setup Frontend**
+
+```bash
+cd ../frontend
+
+# Install dependencies
+npm install
+```
+
 ### Running Locally
 
 ```bash
-# Development mode (both frontend and backend)
+# Terminal 1: Backend (from backend_fastapi/)
+python main.py
+
+# Terminal 2: Frontend (from frontend/)
 npm run dev
-
-# Backend only
-cd backend && npm run dev
-
-# Frontend only
-cd frontend && npm run dev
 ```
 
-Access application at `http://localhost:3000`
+Access application at `http://localhost:5173`
 
 ## 📦 Deployment to Render
 
@@ -307,15 +353,16 @@ Access application at `http://localhost:3000`
    - Go to [Render Dashboard](https://dashboard.render.com)
    - Click "New +" → "Web Service"
    - Connect GitHub repository
-   - Set Build Command: `npm install && cd backend && npm install`
-   - Set Start Command: `npm start`
+   - Set Build Command: `pip install -r backend_fastapi/requirements.txt`
+   - Set Start Command: `cd backend_fastapi && gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app`
 
 2. **Add Environment Variables**
    - Click "Environment"
    - Add all variables from `.env`:
      - `MONGODB_URI`
-     - `GEMINI_API_KEY`
-     - `PORT=5000`
+     - `GOOGLE_API_KEY`
+     - `PORT=8000`
+     - `FRONTEND_URL=https://your-frontend-domain.com`
      - etc.
 
 3. **Deploy**
@@ -340,9 +387,9 @@ npm run build
 
 ```
 MONGODB_URI: mongodb+srv://...
-GEMINI_API_KEY: your_key
-CORS_ORIGIN: https://your-frontend-domain.com
-NODE_ENV: production
+GOOGLE_API_KEY: your_key
+FRONTEND_URL: https://your-frontend-domain.com
+DEBUG: False
 ```
 
 ## 🔐 Security Considerations
@@ -360,7 +407,8 @@ NODE_ENV: production
 
 3. **File Upload**
    - File size limit: 10MB
-   - Allowed types: PDF, DOCX only
+   - Allowed types: PDF and DOCX only
+   - Scanned PDFs automatically detected and OCR-processed with Gemini Vision API
    - Virus scanning recommended for production
 
 4. **Database Security**
@@ -385,24 +433,24 @@ extend: {
 
 ### Adjust Chunk Size
 
-Edit `backend/services/chunkingService.js`:
+Edit `backend_fastapi/app/services/chunking_service.py`:
 
-```javascript
-const CHUNK_SIZE = 1000; // Adjust
-const CHUNK_OVERLAP = 200; // Adjust
+```python
+CHUNK_SIZE = 2000  # Adjust
+CHUNK_OVERLAP = 300  # Adjust
 ```
 
 ### Change Embedding Model
 
-Edit `backend/services/embeddingService.js`:
+Edit `backend_fastapi/app/core/config.py`:
 
-```javascript
-const model = client.getGenerativeModel({ model: "text-embedding-005" });
+```python
+EMBEDDING_MODEL = "text-embedding-005"
 ```
 
 ### Modify RAG Threshold
 
-Edit `.env`:
+Edit `backend_fastapi/app/core/config.py` or `.env`:
 
 ```env
 VECTOR_SEARCH_THRESHOLD=0.7
@@ -441,14 +489,15 @@ VECTOR_SEARCH_THRESHOLD=0.7
 
 ### File Upload Issues
 
-- Check file format (PDF/DOCX)
+- Check file format (PDF or DOCX only)
 - Verify file size < 10MB
-- Check CORS settings
+- Check CORS settings on backend
+- For scanned PDFs: Verify OCR is enabled and Gemini API key is valid
 
 ### Frontend Not Loading
 
-- Verify backend is running
-- Check CORS_ORIGIN matches frontend URL
+- Verify backend is running (http://localhost:8000)
+- Check FRONTEND_URL environment variable
 - Clear browser cache
 
 ## 📝 API Request Examples

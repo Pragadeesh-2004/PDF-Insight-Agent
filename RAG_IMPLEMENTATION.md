@@ -24,24 +24,25 @@ It's an AI technique that combines:
 ```
 User Question
     ↓
-Generate Embedding
+Generate Embedding (Gemini text-embedding-001)
     ↓
-Vector Similarity Search
+Vector Similarity Search (MongoDB Atlas)
     ↓
-    ┌─────────────────────┐
-    │ Similarity Score?   │
-    └─────────────────────┘
-           ↙         ↘
-        HIGH        LOW
-        (>0.7)      (<0.7)
-        ↓           ↓
-      USE RAG    USE GEMINI
-      ↓           ↓
-   Context     No Context
-   ↓           ↓
-   Gemini + Context  Gemini Only
-      ↓           ↓
-    ANSWER      ANSWER
+    ┌──────────────────────────────┐
+    │ Similarity Score? (threshold) │
+    └──────────────────────────────┘
+           ↙                  ↘
+        HIGH                 LOW
+        (>0.3)               (<0.3)
+        ↓                    ↓
+      USE RAG            USE GEMINI
+      ↓                    ↓
+   Retrieve Top 10   No Context
+   Chunks + Context
+      ↓                    ↓
+   Gemini + Context    Gemini Only
+      ↓                    ↓
+    ANSWER              ANSWER
 ```
 
 ## Architecture
@@ -57,31 +58,30 @@ Vector Similarity Search
 └──────────────────────────────────────────────────────────┘
                           ↓
 ┌──────────────────────────────────────────────────────────┐
-│                    BACKEND (Express)                     │
+│                  BACKEND (FastAPI)                       │
 │  ┌────────────────────────────────────────────────────┐ │
-│  │  Routes: /upload, /chat, /session                 │ │
-│  │  Controllers: Upload, Chat, Session               │ │
+│  │  Routes: /upload, /chat, /session, /documents     │ │
 │  │  Services:                                         │ │
-│  │  ├─ PDF/DOCX Extraction                           │ │
-│  │  ├─ Text Chunking                                 │ │
-│  │  ├─ Embedding Generation (Gemini API)            │ │
-│  │  ├─ Vector Search (MongoDB)                       │ │
-│  │  ├─ Gemini Integration                            │ │
-│  │  └─ RAG Orchestration                             │ │
+│  │  ├─ PDF Extraction (PyMuPDF)                      │ │
+│  │  ├─ OCR Processing (Gemini Vision API)           │ │
+│  │  ├─ Text Chunking (LangChain)                    │ │
+│  │  ├─ Embedding Generation (Gemini Embeddings)     │ │
+│  │  ├─ Vector Search (MongoDB Atlas)                │ │
+│  │  ├─ Context Expansion                            │ │
+│  │  └─ RAG Orchestration (Gemini API)               │ │
 │  └────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────┘
                           ↓
         ┌─────────────────┴─────────────────┐
         ↓                                   ↓
 ┌──────────────────┐          ┌──────────────────────┐
-│   MongoDB Atlas  │          │  Google Gemini API   │
+│   MongoDB Atlas  │          │  Google Gemini APIs  │
 │                  │          │                      │
 │ Collections:     │          │ • Embeddings         │
 │ • sessions       │          │ • Text Generation    │
-│ • documents      │          │ • Summarization      │
-│ • chunks         │          │ • QA                 │
-│ • embeddings     │          │                      │
-│ • chatHistory    │          │                      │
+│ • documents      │          │ • OCR/Vision API     │
+│ • chunks         │          │ • Summarization      │
+│ • chat_history   │          │ • QA/Chat            │
 │                  │          │                      │
 │ Vector Search    │          │                      │
 │ TTL Cleanup      │          │                      │
@@ -93,27 +93,37 @@ Vector Similarity Search
 ### 1. Document Upload Flow
 
 ```
-User uploads PDF/DOCX
+User uploads PDF
         ↓
 Validate file (type, size)
         ↓
-Extract text
-├─ PDF → pdf-parse.js
-└─ DOCX → mammoth.js
+Extract text with PyMuPDF
+├─ Standard text extraction
+├─ Page-by-page processing
+└─ Preserve page metadata
         ↓
-Split into chunks
-├─ Character-based: 2000 chars, 300 overlap
+Check if OCR needed?
+├─ If embedded text < OCR_MIN_TEXT_CHARS (25 chars)
+├─ Trigger Gemini Vision API for OCR
+└─ Merge OCR text with extracted text
+        ↓
+Split into chunks (LangChain)
+├─ RecursiveCharacterTextSplitter
+├─ Chunk size: 1500 chars
+├─ Overlap: 300 chars
 └─ Results in ~20-50 chunks per document
         ↓
-Generate embeddings
-├─ Each chunk → Gemini API
-├─ Returns 768-dimensional vector
-└─ Results in ~20-50 embeddings
+Generate embeddings (Gemini)
+├─ Model: gemini-embedding-001
+├─ Dimensions: 3072 per chunk
+├─ Includes page metadata
+└─ Results in ~20-50 embeddings (3072-dim vectors)
         ↓
-Store in MongoDB
+Store in MongoDB Atlas
 ├─ Save document metadata
-├─ Save chunks with text
-└─ Save embeddings with vectors
+├─ Save chunks with text and page numbers
+├─ Save 3072-dim embeddings with vectors
+└─ Create vector search index
         ↓
 Ready for Q&A!
 ```
@@ -123,39 +133,46 @@ Ready for Q&A!
 ```
 User asks: "What is the main topic?"
         ↓
-Generate question embedding
-├─ Same model: text-embedding-005
-├─ Returns 768-dimensional vector
+Generate question embedding (Gemini)
+├─ Model: gemini-embedding-001
+├─ Returns 3072-dimensional vector
 └─ Used for similarity matching
         ↓
-Vector Similarity Search
-├─ Compare question vector
-├─ With all document vectors
+Vector Similarity Search (MongoDB Atlas)
+├─ Compare question vector (3072-dim)
+├─ With all document vectors (3072-dim)
 ├─ Calculate cosine similarity
 └─ Score: 0.0 to 1.0
         ↓
 Sort by similarity score
         ↓
-Filter by threshold (default 0.7)
+Filter by threshold (default 0.3)
         ↓
     Did we find matches?
-       /      \
-     YES      NO
-      ↓        ↓
-   USE RAG   DIRECT LLM
-      ↓        ↓
-   Get Top 5   No Context
+       /              \
+     YES               NO
+      ↓                ↓
+   USE RAG        DIRECT LLM
+      ↓                ↓
+   Get Top 10      No Context
    Chunks
       ↓
+   Expand Context
+   ├─ Get prev/current/next chunks
+   ├─ Mark primary chunks
+   └─ Merge duplicates
+      ↓
    Combine context
-   "Here's relevant info:
-    [chunk1]
-    [chunk2]
-    [chunk3]
-    ...
+   "[PRIMARY CHUNK]
+    The study examined...
+
+    [CONTEXT CHUNK]
+    Previous research...
+
     User question: ..."
       ↓
    Send to Gemini
+   (with system prompt for accuracy)
       ↓
    Generate answer
       ↓
@@ -167,57 +184,57 @@ Filter by threshold (default 0.7)
 ```
 Session Created
 ├─ sessionId: "session-12345"
-├─ agentType: "PDF_INSIGHT_AGENT"
-└─ TTL: 1 hour
+└─ TTL: 24 hours (SESSION_EXPIRY_HOURS=24)
 
 Document Uploaded
 ├─ documentId: "uuid"
 ├─ sessionId: "session-12345"
-├─ fileName: "research.pdf"
-├─ fileType: "PDF"
-├─ chunksCount: 25
-└─ TTL: 1 hour
+├─ filename: "research.pdf"
+├─ page_count: 25
+├─ chunk_count: 25
+└─ TTL: 24 hours (auto-delete via session expiry)
 
 Chunks Stored
-├─ chunkId: "uuid-chunk-0"
+├─ _id: ObjectId
 ├─ documentId: "uuid"
 ├─ sessionId: "session-12345"
 ├─ text: "The document contains..."
 ├─ chunkIndex: 0
-└─ TTL: 1 hour
+├─ pageNumber: 1
+└─ TTL: 24 hours (auto-delete via session expiry)
 
-Embeddings Stored
-├─ embeddingId: "uuid"
-├─ chunkId: "uuid-chunk-0"
+Embeddings Stored (with Chunks)
+├─ _id: ObjectId
 ├─ documentId: "uuid"
 ├─ sessionId: "session-12345"
-├─ vector: [0.123, -0.456, 0.789, ...]
-└─ TTL: 1 hour
+├─ chunkIndex: 0
+├─ text: "The document contains..."
+├─ embedding: [0.123, -0.456, 0.789, ...] (3072-dim vector)
+└─ TTL: 24 hours (auto-delete via session expiry)
 
 Chat History Stored
-├─ messageId: "uuid"
+├─ _id: ObjectId
 ├─ sessionId: "session-12345"
 ├─ role: "user" or "assistant"
 ├─ content: "message text"
-├─ usedRAG: true/false
-├─ relevantDocuments: ["doc-id-1"]
-└─ TTL: 1 hour
+├─ timestamp: Date
+└─ TTL: 24 hours (auto-delete via session expiry)
 ```
 
 ## Vector Search Deep Dive
 
 ### What is Vector Similarity?
 
-Each text chunk is converted to a vector (array of numbers):
+Each text chunk is converted to a 3072-dimensional vector:
 
 ```
-"The sky is blue" → [-0.12, 0.45, 0.89, -0.23, ...]  (768 dimensions)
+"The sky is blue" → [-0.12, 0.45, 0.89, -0.23, ..., 0.34]  (3072 dimensions)
 ```
 
-When you ask a question, it's also converted to a vector:
+When you ask a question, it's also converted to a 3072-dimensional vector:
 
 ```
-"What color is the sky?" → [0.08, 0.42, 0.91, -0.19, ...]  (768 dimensions)
+"What color is the sky?" → [0.08, 0.42, 0.91, -0.19, ..., 0.29]  (3072 dimensions)
 ```
 
 **Similarity is calculated** using cosine similarity:
@@ -233,43 +250,67 @@ Result: 0.0 to 1.0
 Score 0.9+ : Highly relevant
   Example: "sky" vs "sky color"
 
-Score 0.7-0.9 : Relevant
-  Example: "sky" vs "weather condition"
+Score 0.7-0.9 : Very relevant
+  Example: "sky" vs "weather prediction"
 
-Score 0.5-0.7 : Somewhat related
-  Example: "sky" vs "outdoor activity"
+Score 0.5-0.7 : Moderately related
+  Example: "sky" vs "outdoor activities"
 
-Score <0.5 : Not related
+Score 0.3-0.5 : Weakly related
+  Example: "sky" vs "atmosphere science"
+
+Score <0.3 : Not related
   Example: "sky" vs "cooking recipe"
 ```
 
-### Default Threshold: 0.7
+### Default Threshold: 0.3
 
-- **Why 0.7?** Balances precision and recall
+- **Why 0.3?** Balances precision and recall for broader document coverage
 - **Adjustments**:
-  - ↑ Higher (0.8+): Stricter, fewer false positives
-  - ↓ Lower (0.6-): Looser, more coverage but noise
+  - ↑ Higher (0.5+): Stricter, fewer results but higher quality
+  - ↓ Lower (0.1-0.3): Broader, more coverage with potential noise
+  - **Recommendation**: Keep at 0.3 for general queries
+
+### MongoDB Atlas Vector Search Configuration
+
+```json
+{
+  "fields": [
+    {
+      "type": "vector",
+      "path": "embedding",
+      "similarity": "cosine",
+      "dimensions": 3072
+    },
+    {
+      "type": "filter",
+      "path": "sessionId"
+    }
+  ]
+}
+```
 
 ## Embedding Model
 
-### text-embedding-005 (Recommended)
+### gemini-embedding-001 (Recommended)
 
-- **Dimensions**: 768
-- **Cost**: Free tier available
-- **Speed**: ~100ms per chunk
-- **Quality**: High
-- **Optimization**: Optimized for semantic search
+- **Dimensions**: 3072
+- **Cost**: Free tier available (generous quota)
+- **Speed**: ~100-200ms per chunk
+- **Quality**: High semantic understanding
+- **Optimization**: Optimized for semantic search across documents
+- **Update frequency**: Regularly improved by Google
 
 ### Example Embedding Usage
 
-```javascript
-import { generateEmbedding } from "./embeddingService.js";
+```python
+from app.services.embedding_service import EmbeddingService
 
-const text = "Python is a programming language";
-const embedding = await generateEmbedding(text);
-// Result: [0.123, -0.456, 0.789, ..., -0.234]  (768 numbers)
+text = "Python is a programming language"
+embedding = await EmbeddingService.generate_embedding(text)
+# Result: [0.123, -0.456, 0.789, ..., -0.234]  (3072 numbers)
 
-console.log(embedding.length); // 768
+print(len(embedding))  # 3072
 ```
 
 ## Chunking Strategy
@@ -280,30 +321,51 @@ console.log(embedding.length); // 768
 - **Context Windows**: Smaller chunks, more precise retrieval
 - **Efficiency**: Process only relevant parts
 - **Scalability**: Handle large documents
+- **Better Indexing**: Optimize vector search performance
 
-### Chunking Methods
+### Chunking Method: RecursiveCharacterTextSplitter (LangChain)
 
-#### 1. Character-Based (Recommended)
+```python
+from app.services.chunking_service import ChunkingService
 
-```javascript
-chunkTextByCharacters(text, (chunkSize = 2000), (overlap = 300));
+text = "The document contains information about AI... machine learning... neural networks..."
+
+chunks = await ChunkingService.chunk_text(
+    text,
+    chunk_size=1500,      # Default characters per chunk
+    chunk_overlap=300     # Default overlap between chunks
+)
 ```
 
-**Example**:
+### Configuration
+
+```env
+CHUNK_SIZE=1500           # Characters per chunk
+CHUNK_OVERLAP=300         # Characters that overlap between chunks
+```
+
+### Example Chunking
 
 ```
-Full Text: "The document contains information about AI... machine learning... neural networks..."
+Full Text: "The document contains information about AI... machine learning... neural networks... deep learning..."
 
-Chunk 1: "The document contains information about AI... machine learning..." (2000 chars)
-          ↑ Start
-                                                                    ↑ End (first 2000)
+Chunk 1: [chars 0-1500]
+         "The document contains information about AI... machine learning..."
+         ↑ Start
+                                                                    ↑ End
+
+Chunk 2: [chars 1200-2700]  (overlaps with Chunk 1 by 300 chars)
+         "...machine learning... neural networks... deep learning..."
+         ↑ Overlap area ───────↑
+```
 
 Chunk 2: "machine learning... neural networks..." (2000 chars)
-          ↑ Start (overlaps 300 chars from chunk 1)
-                                                   ↑ End
+↑ Start (overlaps 300 chars from chunk 1)
+↑ End
 
 Chunk 3: "neural networks..." (remaining)
-```
+
+````
 
 **Advantages**:
 
@@ -315,7 +377,7 @@ Chunk 3: "neural networks..." (remaining)
 
 ```javascript
 chunkText(text, (chunkSize = 1000), (overlap = 200));
-```
+````
 
 **Advantages**:
 
@@ -462,30 +524,28 @@ Sweet Spot: 2000-3000 chars
 
 ### Enable Debug Logging
 
-Edit `backend/services/ragService.js`:
+Edit `backend_fastapi/app/services/rag_service.py`:
 
-```javascript
-export async function answerQuestionWithRAG(
-  sessionId,
-  question,
-  queryEmbedding,
-) {
-  console.log("🔍 RAG Query:", question);
+```python
+from app.core.config import settings
 
-  const relevantChunks = await vectorSearch(
-    sessionId,
-    queryEmbedding,
-    5,
-    threshold,
-  );
-  console.log(`📚 Found ${relevantChunks.length} relevant chunks`);
-  console.log(
-    "Similarity scores:",
-    relevantChunks.map((c) => c.similarity),
-  );
+async def answer_question_with_rag(
+    session_id: str,
+    question: str,
+    query_embedding: list[float],
+):
+    logger.info(f"🔍 RAG Query: {question}")
 
-  // ... rest of code
-}
+    relevant_chunks = await vector_store.search(
+        query_embedding,
+        session_id,
+        top_k=10,
+        similarity_threshold=settings.SIMILARITY_THRESHOLD
+    )
+    logger.info(f"📚 Found {len(relevant_chunks)} relevant chunks")
+    logger.info(f"Similarity scores: {[c['score'] for c in relevant_chunks]}")
+
+    # ... rest of code
 ```
 
 ### Check Embeddings in MongoDB
@@ -494,27 +554,37 @@ export async function answerQuestionWithRAG(
 # View embeddings for a session
 db.embeddings.find({ sessionId: "session-id" }).limit(1).pretty()
 
-# Check embedding vector (should be 768 numbers)
-db.embeddings.findOne({ sessionId: "session-id" })
-  .vector.length  // Should be 768
+# Check embedding vector (should be 3072 numbers)
+db.chunks.findOne({ sessionId: "session-id" })
+  .embedding.length  // Should be 3072
 ```
 
 ### Test Vector Search Manually
 
+Use MongoDB Compass or MongoDB Shell:
+
 ```javascript
-import { vectorSearch } from "./vectorSearchService.js";
+// View a sample chunk with embedding
+db.chunks.findOne({ sessionId: "test-session" }).pretty()
 
-const sessionId = "test-session";
-const testEmbedding = await generateEmbedding("test query");
+// Verify vector search index exists
+db.chunks.getIndexes()
 
-const results = await vectorSearch(sessionId, testEmbedding, 10, 0.5);
-
-console.log("Results:", results);
-results.forEach((r, i) => {
-  console.log(
-    `${i + 1}. Score: ${r.similarity}, Text: ${r.text.substring(0, 100)}...`,
-  );
-});
+// Test $vectorSearch aggregation pipeline
+db.chunks.aggregate([
+  {
+    $vectorSearch: {
+      index: "vector_index",
+      path: "embedding",
+      queryVector: [0.123, -0.456, ...],  // 3072-dim vector
+      k: 10,
+      numCandidates: 100
+    }
+  },
+  {
+    $match: { sessionId: "test-session" }
+  }
+])
 ```
 
 ## Advanced Topics
