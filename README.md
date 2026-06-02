@@ -564,4 +564,4 @@ For issues and questions:
 
 ---
 
-**Built with ❤️ using React, Node.js, MongoDB Atlas, and Google Gemini 2.0 API**
+**Built with ❤️ using React, MongoDB Atlas, and Google Gemini 2.0 API**
