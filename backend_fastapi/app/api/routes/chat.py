@@ -133,7 +133,7 @@ async def chat_message(request: ChatRequest) -> ChatResponse:
                 "agentType": request.agent_type,
                 "contextChunksUsed": rag_result.get("chunks_retrieved", 0),
                 "source": rag_result.get("source", "UNKNOWN"),
-                "model": rag_result.get("model", "gemini-3.1-flash-lite"),
+                "model": rag_result.get("model", "gemini-3.5-flash-lite"),
                 "createdAt": datetime.utcnow(),
             }
             
@@ -157,11 +157,14 @@ async def chat_message(request: ChatRequest) -> ChatResponse:
             message=request.message,
             answer=rag_result["answer"],
             source=rag_result.get("source", "DOCUMENT_RAG"),
-            context_used=rag_result.get("chunks_retrieved", 0),
+            context_used=rag_result.get("context_used", rag_result.get("chunks_retrieved", 0)),
             chunks_retrieved=rag_result.get("chunks_retrieved"),
             chunks_with_context=rag_result.get("chunks_with_context"),
-            model=rag_result.get("model", "gemini-3.1-flash-lite"),
-            timestamp=datetime.utcnow()
+            model=rag_result.get("model", "gemini-3.5-flash-lite"),
+            timestamp=datetime.utcnow(),
+            agent_trace=rag_result.get("agent_trace"),
+            tools_used=rag_result.get("tools_used"),
+            grounded=rag_result.get("grounded"),
         )
         
     except HTTPException:

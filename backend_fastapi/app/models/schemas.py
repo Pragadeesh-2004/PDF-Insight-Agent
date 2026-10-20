@@ -31,8 +31,11 @@ class ChatResponse(BaseModel):
     context_used: int = Field(0, description="Number of context chunks used")
     chunks_retrieved: Optional[int] = None
     chunks_with_context: Optional[int] = None
-    model: str = "gemini-3.1-flash-lite"
+    model: str = "gemini-3.5-flash-lite"
     timestamp: datetime
+    agent_trace: Optional[List[str]] = Field(None, description="Trace of tools used by the agent")
+    tools_used: Optional[List[str]] = Field(None, description="Tool names invoked by the agent")
+    grounded: Optional[bool] = Field(None, description="Whether the model self-checked the answer as grounded")
 
 
 # Document Upload Models
